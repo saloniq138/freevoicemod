@@ -96,7 +96,7 @@ class Engine:
         fs = max(float(self.input_rate), 8000.0)
         radius = float(np.exp(-np.pi * bandwidth / fs))
         coeff = 2.0 * radius * float(np.cos(2.0 * np.pi * frequency / fs))
-        gain = 1.0 - radius
+        gain = (1.0 - radius) ** 2
         y1, y2 = self.formant_state.get(key, (0.0, 0.0))
         out = np.empty_like(samples)
         for i, sample in enumerate(samples):
