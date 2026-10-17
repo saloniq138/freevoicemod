@@ -6,13 +6,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
  QPushButton,QComboBox,QSlider,QCheckBox,QGroupBox,QGridLayout,QMessageBox,QFileDialog,
- QListWidget,QInputDialog)
+ QListWidget,QInputDialog,QScrollArea,QLineEdit)
 
 APP = Path(os.getenv("APPDATA", str(Path.home()))) / "VoiceForge"
 APP.mkdir(parents=True, exist_ok=True)
 SOUNDS = APP / "sounds"; SOUNDS.mkdir(exist_ok=True)
 PRESETS = APP / "presets.json"
-EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female", "Male", "Villager", "Chicken", "Zombie", "Ghost", "Alien", "Helium", "Deep", "Megaphone", "Chipmunk"]
+EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female", "Male", "Villager", "Chicken", "Zombie", "Skeleton", "Creeper", "Enderman", "Ghast", "Witch", "Spider", "Pig", "Cow", "Sheep", "Ender Dragon", "Ghost", "Alien", "Helium", "Deep", "Megaphone", "Chipmunk"]
 
 class Engine:
     def __init__(self):
@@ -122,6 +122,30 @@ class Engine:
         elif self.effect == "Zombie":
             x = np.tanh(x*5)*.8 + .28*np.sin(2*np.pi*58*t)*np.abs(x)
             x = x*.8 + prev*.2
+        elif self.effect == "Skeleton":
+            x = np.tanh(x*4.2)*.62 + (x-prev)*.55
+            x += .12*np.sin(2*np.pi*(185+24*np.sin(2*np.pi*7*t))*t)*np.abs(x)
+        elif self.effect == "Creeper":
+            wobble = np.sin(2*np.pi*2.2*t)
+            x = np.tanh(x*4.8)*(.72+.22*wobble) + .16*np.sin(2*np.pi*(62+16*wobble)*t)*np.abs(x)
+        elif self.effect == "Enderman":
+            x = np.tanh(x*3.5)*.72 + .22*np.sin(2*np.pi*(95+18*np.sin(2*np.pi*1.3*t))*t)*np.abs(x)
+            x = x*.72 + prev*.28
+        elif self.effect == "Ghast":
+            x = np.tanh(x*2.2)*(.48+.42*np.sin(2*np.pi*1.1*t)) + .22*np.sin(2*np.pi*260*t)*np.abs(x)
+        elif self.effect == "Witch":
+            x = np.tanh(x*3.8)*.7 + .22*np.sin(2*np.pi*(125+35*np.sin(2*np.pi*4*t))*t)*np.abs(x)
+        elif self.effect == "Spider":
+            x = np.tanh(x*3.2)*(.6+.4*np.sin(2*np.pi*12*t)) + .18*(x-prev)
+        elif self.effect == "Pig":
+            x = np.tanh(x*2.6)*.55 + .32*np.sin(2*np.pi*(290+80*np.sin(2*np.pi*5*t))*t)*np.abs(x)
+        elif self.effect == "Cow":
+            x = np.tanh(x*3.2)*.72 + prev*.24 + .08*np.sin(2*np.pi*82*t)*np.abs(x)
+        elif self.effect == "Sheep":
+            x = np.tanh(x*2.8)*(.68+.25*np.sin(2*np.pi*5.5*t)) + .16*np.sin(2*np.pi*210*t)*np.abs(x)
+        elif self.effect == "Ender Dragon":
+            x = np.tanh(x*5)*(.7+.25*np.sin(2*np.pi*.7*t)) + .22*np.sin(2*np.pi*48*t)*np.abs(x)
+            x = x*.82 + prev*.18
         elif self.effect == "Ghost":
             x = np.tanh(x*2)*(.65+.35*np.sin(2*np.pi*2*t)) + prev*.2
         elif self.effect == "Alien":
@@ -167,9 +191,14 @@ class Engine:
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VoiceForge"); self.resize(1080, 780); self.engine = Engine()
+        self.setWindowTitle("VoiceForge"); self.resize(1120, 820); self.setMinimumSize(900, 650); self.engine = Engine()
         self.setStyleSheet("""
         QMainWindow,QWidget{background:#0b0a12;color:#f4f0ff;font-size:14px}
+        QLineEdit{background:#211b2e;border:1px solid #49395f;border-radius:9px;padding:9px;color:#f4f0ff}
+        QScrollArea{border:0;background:transparent}
+        QScrollBar:vertical{background:#171321;width:10px;margin:3px;border-radius:5px}
+        QScrollBar::handle:vertical{background:#5b467d;min-height:24px;border-radius:5px}
+        QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0}
         QGroupBox{background:#15121f;border:1px solid #3c3154;border-radius:16px;margin-top:14px;padding:14px;font-weight:700}
         QGroupBox::title{subcontrol-origin:margin;left:14px;padding:0 7px;color:#c4b5fd}
         QPushButton{background:#282137;border:1px solid #4b3c68;border-radius:10px;padding:10px 12px;font-weight:700}
@@ -207,20 +236,24 @@ class Window(QMainWindow):
         controls.addWidget(self.start); controls.addWidget(self.stop); dg.addLayout(controls,3,0,1,2); main.addWidget(dev)
 
         row = QHBoxLayout()
-        eg = QGroupBox("VOICE EFFECTS"); el = QGridLayout(eg); self.effect_buttons = []
-        self.selected_voice = QLabel("SELECTED VOICE\nClean")
-        self.selected_voice.setAlignment(Qt.AlignCenter)
-        self.selected_voice.setStyleSheet("background:#29213b;color:#d8b4fe;padding:18px;border-radius:12px;font-size:20px;font-weight:900")
-        el.addWidget(self.selected_voice,0,0,1,2)
+        eg = QGroupBox("VOICE EFFECTS"); el = QVBoxLayout(eg); self.effect_buttons = []
+        self.selected_voice = QLabel("SELECTED VOICE  ·  Clean")
+        self.selected_voice.setAlignment(Qt.AlignCenter); self.selected_voice.setMinimumHeight(62)
+        self.selected_voice.setStyleSheet("background:#29213b;color:#d8b4fe;padding:14px;border-radius:12px;font-size:19px;font-weight:900")
+        el.addWidget(self.selected_voice)
+        self.effect_search = QLineEdit(); self.effect_search.setPlaceholderText("⌕  Search effects… (e.g. Skeleton)")
+        self.effect_search.textChanged.connect(self.filter_effects); el.addWidget(self.effect_search)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setMinimumHeight(250)
+        effect_panel = QWidget(); self.effect_grid = QGridLayout(effect_panel); self.effect_grid.setSpacing(8)
         for i, name in enumerate(EFFECTS):
-            b = QPushButton(name); b.setCheckable(True)
+            b = QPushButton(name); b.setCheckable(True); b.setMinimumHeight(38)
             b.clicked.connect(lambda checked, n=name: self.set_effect(n))
-            el.addWidget(b,1+i//2,i%2); self.effect_buttons.append((name,b))
+            self.effect_grid.addWidget(b,i//2,i%2); self.effect_buttons.append((name,b))
+        scroll.setWidget(effect_panel); el.addWidget(scroll,1)
         self.effect_buttons[0][1].setChecked(True)
-        el.addWidget(QLabel("OUTPUT LEVEL"),10,0,1,2)
-        self.mix = QSlider(Qt.Horizontal); self.mix.setRange(0,100); self.mix.setValue(80)
-        self.mix.valueChanged.connect(lambda v: setattr(self.engine,"mix",v/100)); el.addWidget(self.mix,11,0,1,2)
-        self.nr = QCheckBox("Light noise gate"); self.nr.toggled.connect(lambda v: setattr(self.engine,"denoise",v)); el.addWidget(self.nr,12,0,1,2)
+        el.addWidget(QLabel("OUTPUT LEVEL")); self.mix = QSlider(Qt.Horizontal); self.mix.setRange(0,100); self.mix.setValue(80)
+        self.mix.valueChanged.connect(lambda v: setattr(self.engine,"mix",v/100)); el.addWidget(self.mix)
+        self.nr = QCheckBox("Light noise gate"); self.nr.toggled.connect(lambda v: setattr(self.engine,"denoise",v)); el.addWidget(self.nr)
         row.addWidget(eg,3)
 
         right = QVBoxLayout()
@@ -234,15 +267,20 @@ class Window(QMainWindow):
         for label, fn in [("Add WAV",self.add_sound),("Play",self.play_sound),("Remove",self.remove_sound)]:
             b = QPushButton(label); b.clicked.connect(fn); sbtn.addWidget(b)
         sl.addLayout(sbtn); right.addWidget(sg); row.addLayout(right,4); main.addLayout(row)
-        note = QLabel("Villager / Chicken / Zombie are Minecraft-inspired live effects, not original game recordings. For authentic sounds, add your own legally obtained WAV files to the soundboard.")
+        note = QLabel("Minecraft-inspired live effects: Villager, Zombie, Skeleton, Creeper, Enderman, Ghast, Witch, Spider, Pig, Cow, Sheep and Ender Dragon. These are generated voice filters, not original Minecraft voice recordings. Add your own WAVs in Soundboard for authentic sounds.")
         note.setWordWrap(True); note.setStyleSheet("color:#aaa0bd;font-size:12px"); main.addWidget(note)
         QShortcut(QKeySequence("Ctrl+Shift+V"), self, activated=self.toggle_audio)
         for i,n in enumerate(EFFECTS,1): QShortcut(QKeySequence(f"Ctrl+{i}"),self,activated=lambda name=n:self.set_effect(name))
         self.refresh()
 
+    def filter_effects(self, text):
+        query = text.strip().casefold()
+        for name, button in self.effect_buttons:
+            button.setVisible(query in name.casefold())
+
     def set_effect(self, name):
         self.engine.effect = name
-        self.selected_voice.setText("SELECTED VOICE\n" + name)
+        self.selected_voice.setText("SELECTED VOICE  ·  " + name)
         for n,b in self.effect_buttons: b.setChecked(n == name)
 
     def start_audio(self):
