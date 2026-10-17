@@ -33,7 +33,7 @@ class VillagerOverlay:
             key=lambda p: p.name.casefold(),
         ))
         signature = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in files)
-        if signature == self.last_files and self.samples:
+        if signature == self.last_files:
             return
         loaded = []
         for path in files:
@@ -62,12 +62,13 @@ class VillagerOverlay:
             self.offset = 0
             self.cooldown = 0
 
-    def mix(self, mic, sample_rate):
+    def mix(self, mic, sample_rate, voice_reference=None):
         if not self.samples or not len(mic):
             return mic
-        # Measure input activity, not the already-filtered output, so clips
-        # are triggered by the user's speech rather than by their own tails.
-        level = float(np.sqrt(np.mean(np.square(mic, dtype=np.float64)) + 1e-12))
+        # Measure raw input activity, not the filtered output, so clips are
+        # triggered by the user's speech rather than by their own tails.
+        reference = voice_reference if voice_reference is not None else mic
+        level = float(np.sqrt(np.mean(np.square(reference, dtype=np.float64)) + 1e-12))
         voiced = level > 0.012
         result = mic.copy()
         n = len(result)
@@ -123,7 +124,7 @@ def install_villager_autotune(engine_class, sounds_dir):
             # app is open; the directory scan is cheap and decoding only occurs
             # when the file list changes.
             self.villager_overlay.load_samples(self.input_rate)
-            result = self.villager_overlay.mix(result, self.input_rate)
+            result = self.villager_overlay.mix(result, self.input_rate, raw_voice)
         return result
 
     engine_class.__init__ = init
