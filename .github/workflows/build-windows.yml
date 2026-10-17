@@ -1,0 +1,29 @@
+name: Build VoiceForge for Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build executable
+        run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 main.py
+      - name: Package app
+        shell: pwsh
+        run: Compress-Archive -Path dist/VoiceForge -DestinationPath VoiceForge-Windows.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoiceForge-Windows
+          path: VoiceForge-Windows.zip
+          if-no-files-found: error
