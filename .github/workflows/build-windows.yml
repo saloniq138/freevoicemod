@@ -20,7 +20,7 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q main.py
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 main.py
+        run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 --collect-all miniaudio main.py
       - name: Package app
         shell: pwsh
         run: Compress-Archive -Path dist/VoiceForge -DestinationPath VoiceForge-Windows.zip -Force
