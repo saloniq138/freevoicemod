@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 import miniaudio
+from villager_autotune import install_villager_autotune
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
@@ -265,6 +266,9 @@ class Engine:
                     except queue.Full: pass
         else:
             sd.play(samples, samplerate=rate, device=int(device) if device is not None else None, blocking=False)
+
+install_villager_autotune(Engine, SOUNDS)
+
 
 class Window(QMainWindow):
     def __init__(self):
