@@ -18,7 +18,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Check Python syntax
-        run: python -m compileall -q main.py
+        run: python -m compileall -q main.py tests
+      - name: Run hardware-independent DSP tests
+        run: python -m unittest discover -s tests -v
       - name: Build executable
         run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 --collect-all miniaudio main.py
       - name: Package app
