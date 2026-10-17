@@ -3,18 +3,18 @@
 Darmowy prototyp zmieniacza głosu na żywo dla Windows, z ciemnym interfejsem i fioletowymi akcentami.
 
 ## Efekty głosu
-- Clean, Robot, Demon, Radio, Echo.
-- Female/Male pitch: lekka zmiana barwy, nie pełna zmiana wysokości głosu.
-- Villager: nosowa, bucząca modulacja inspirowana wieśniakiem z Minecrafta.
-- Chicken: wysoka, piskliwa modulacja inspirowana kurczakiem.
-- Zombie: niska, chropowata modulacja inspirowana zombie.
+- **Clean** — bez dodatkowego efektu.
+- **Robot, Demon, Radio, Echo** — modulacja, przester i echo.
+- **Female, Male, Helium, Deep, Chipmunk** — eksperymentalne zmiany barwy głosu; nie są to zaawansowane algorytmy zmiany wysokości tonu.
+- **Villager, Chicken, Zombie, Ghost, Alien, Megaphone** — efekty stylizowane i modulowane.
+- Wybrany efekt jest widoczny w panelu **SELECTED VOICE**. Lista jest oparta na efektach DSP, nie na instalowanych głosach TTS.
 
 Efekty Villager/Chicken/Zombie są generowanymi efektami DSP, a nie oryginalnymi próbkami dźwiękowymi z Minecrafta. Realistyczna konwersja głosu AI nie jest jeszcze zaimplementowana.
 
 ## Inne funkcje
 - Przekazywanie audio z mikrofonu do wyjścia audio.
 - Lekka bramka szumów.
-- Soundboard dla plików WAV PCM 16-bit.
+- Soundboard dla plików WAV PCM 16-bit; dźwięki trafiają do aktywnego strumienia wyjściowego, zamiast otwierać drugi strumień na tym samym urządzeniu.
 - Zapisywanie presetów.
 - Skróty Ctrl+1 do Ctrl+9 wybierają efekty; Ctrl+Shift+V uruchamia/zatrzymuje audio, gdy okno aplikacji ma fokus.
 
@@ -35,7 +35,7 @@ python main.py
 ## Kompilacja EXE
 Uruchom `build_windows.bat`. Plik będzie w `dist\\VoiceForge\\VoiceForge.exe`. Zachowaj cały folder `dist\\VoiceForge`.
 
-GitHub Actions automatycznie buduje aplikację na Windows po zmianach na `main` i publikuje artefakt `VoiceForge-Windows` w przebiegu workflow.
+GitHub Actions automatycznie sprawdza składnię Pythona, buduje aplikację na Windows po zmianach na `main` lub `master` i publikuje artefakt `VoiceForge-Windows` w przebiegu workflow. Samo sprawdzenie składni nie zastępuje testów audio na fizycznym mikrofonie i urządzeniu wyjściowym.
 
 ## Status
 To prototyp. Efekty są aproksymacjami DSP i wymagają testów na konkretnym sprzęcie. Nie deklarujemy gotowości pliku EXE, dopóki build nie zakończy się pomyślnie.
