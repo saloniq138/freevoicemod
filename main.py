@@ -12,12 +12,12 @@ APP = Path(os.getenv("APPDATA", str(Path.home()))) / "VoiceForge"
 APP.mkdir(parents=True, exist_ok=True)
 SOUNDS = APP / "sounds"; SOUNDS.mkdir(exist_ok=True)
 PRESETS = APP / "presets.json"
-EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female/Male pitch"]
+EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female/Male pitch", "Villager", "Chicken", "Zombie"]
 
 class Engine:
     def __init__(self):
         self.stream=None; self.effect="Clean"; self.mix=.7; self.denoise=False
-        self.echo=np.zeros(48000,dtype=np.float32); self.pos=0; self.phase=0
+        self.echo=np.zeros(48000,dtype=np.float32); self.pos=0; self.phase=0; self.voice_phase=0.0
         self.output=None
     def start(self, inp, out):
         self.stop(); self.echo[:]=0; self.pos=0; self.output=out
@@ -31,18 +31,39 @@ class Engine:
     def cb(self, indata,outdata,frames,time_info,status):
         x=indata[:,0].copy()
         if self.denoise and np.sqrt(np.mean(x*x)+1e-12)<.012: x*=.15
+        t=(np.arange(frames,dtype=np.float32)+self.phase)/48000.0
         if self.effect=="Robot":
-            t=(np.arange(frames)+self.phase)/48000
-            x*=np.sin(2*np.pi*65*t); self.phase=(self.phase+frames)%48000
-        elif self.effect=="Demon": x=np.tanh(x*4)*.85
+            x=np.tanh(x*2.2)*np.sin(2*np.pi*65*t)
+        elif self.effect=="Demon":
+            x=np.tanh(x*5.5)*.9 + .18*np.sin(2*np.pi*48*t)*x
         elif self.effect=="Radio":
-            x=np.tanh(x*2.5); x=np.concatenate((x[:1],np.diff(x))); x=np.round(x*28)/28
+            x=np.tanh(x*2.8); x=np.concatenate((x[:1],np.diff(x))); x=np.round(x*24)/24
         elif self.effect=="Echo":
             for i in range(frames):
                 delayed=self.echo[(self.pos-7200)%len(self.echo)]
                 cur=x[i]; self.echo[self.pos]=cur+delayed*.42
-                x[i]=cur+delayed*.35; self.pos=(self.pos+1)%len(self.echo)
-        elif self.effect=="Female/Male pitch": x=np.tanh(x*1.4)
+                x[i]=cur+delayed*.42; self.pos=(self.pos+1)%len(self.echo)
+        elif self.effect=="Female/Male pitch":
+            # Lightweight tonal coloration only; this is not a true pitch shifter or AI conversion.
+            x=np.tanh(x*1.7)
+            x=.75*x+.25*np.concatenate(([x[0]],x[:-1]))
+        elif self.effect=="Villager":
+            # Nasal, buzzy villager-like coloration with a voiced wobble.
+            wobble=.82+.18*np.sin(2*np.pi*5.2*t)
+            x=np.tanh(x*3.2)*wobble
+            x=.72*x+.28*np.concatenate(([x[0]],x[:-1]))
+            x=np.clip(x + .12*np.sin(2*np.pi*145*t)*np.abs(x),-1,1)
+        elif self.effect=="Chicken":
+            # High, squeaky cartoon-like coloration (not an original Minecraft sound sample).
+            squeak=np.sin(2*np.pi*(330+65*np.sin(2*np.pi*7*t))*t)
+            x=np.tanh(x*2.4)*.55 + .32*squeak*np.abs(x)
+            x=np.concatenate((x[:1],np.diff(x))) * 1.25
+        elif self.effect=="Zombie":
+            # Low, rough, growly coloration.
+            growl=np.sin(2*np.pi*58*t)
+            x=np.tanh(x*4.8)*.82 + .25*growl*np.abs(x)
+            x=.8*x+.2*np.concatenate(([x[0]],x[:-1]))
+        self.phase=(self.phase+frames)%48000
         outdata[:,0]=np.clip(x*self.mix,-.98,.98)
     def play_wav(self,path):
         with wave.open(str(path),"rb") as w:
@@ -107,7 +128,7 @@ class Window(QMainWindow):
         note=QLabel("Efekt Female/Male jest przybliżeniem tonalnym, nie konwersją AI. Realistyczna konwersja AI wymaga dodatkowego modelu i nie jest jeszcze dostępna.")
         note.setWordWrap(True); note.setStyleSheet("color:#a99dbb;font-size:12px"); main.addWidget(note)
         QShortcut(QKeySequence("Ctrl+Shift+V"),self,activated=self.toggle_audio)
-        for i,n in enumerate(EFFECTS[:5],1): QShortcut(QKeySequence(f"Ctrl+{i}"),self,activated=lambda name=n:self.set_effect(name))
+        for i,n in enumerate(EFFECTS,1): QShortcut(QKeySequence(f"Ctrl+{i}"),self,activated=lambda name=n:self.set_effect(name))
         self.refresh()
     def set_effect(self,name):
         self.engine.effect=name
