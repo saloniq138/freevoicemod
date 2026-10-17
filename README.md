@@ -6,10 +6,12 @@ Darmowy prototyp zmieniacza głosu na żywo dla Windows, z ciemnym interfejsem i
 - **Clean** — bez dodatkowego efektu.
 - **Robot, Demon, Radio, Echo** — modulacja, przester i echo.
 - **Female, Male, Helium, Deep, Chipmunk** — eksperymentalne zmiany barwy głosu; nie są to zaawansowane algorytmy zmiany wysokości tonu.
-- **Villager, Chicken, Zombie, Ghost, Alien, Megaphone** — efekty stylizowane i modulowane.
+- **Villager, Chicken, Zombie, Skeleton, Creeper, Enderman, Ghast, Witch, Spider, Pig, Cow, Sheep, Ender Dragon** — dodatkowe efekty inspirowane mobami z Minecrafta.
+- **Ghost, Alien, Megaphone** — pozostałe efekty stylizowane i modulowane.
+- Panel efektów ma wyszukiwarkę i przewijanie, więc długa lista nie rozciąga całego okna.
 - Wybrany efekt jest widoczny w panelu **SELECTED VOICE**. Lista jest oparta na efektach DSP, nie na instalowanych głosach TTS.
 
-Efekty Villager/Chicken/Zombie są generowanymi efektami DSP, a nie oryginalnymi próbkami dźwiękowymi z Minecrafta. Realistyczna konwersja głosu AI nie jest jeszcze zaimplementowana.
+Wszystkie efekty mobów są generowanymi filtrami DSP inspirowanymi brzmieniem Minecrafta, a nie oryginalnymi próbkami ani dokładną emulacją dźwięków gry. Realistyczna konwersja głosu AI nie jest jeszcze zaimplementowana.
 
 ## Inne funkcje
 - Przekazywanie audio z mikrofonu do wyjścia audio.
