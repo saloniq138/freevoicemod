@@ -21,6 +21,7 @@ class Engine:
         self.echo = np.zeros(96000, dtype=np.float32); self.pos = 0
         self.phase = 0; self.input_rate = 48000; self.output_rate = 48000
         self.audio_queue = queue.Queue(maxsize=80); self.output = None
+        self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
 
     def start(self, inp, out):
         self.stop()
@@ -29,6 +30,7 @@ class Engine:
         self.input_rate = int(round(idev["default_samplerate"])) or 48000
         self.output_rate = int(round(odev["default_samplerate"])) or 48000
         self.output = int(out); self.echo[:] = 0; self.pos = 0; self.phase = 0
+        self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
         while not self.audio_queue.empty():
             try: self.audio_queue.get_nowait()
             except queue.Empty: break
@@ -69,15 +71,22 @@ class Engine:
             except queue.Full: pass
 
     def output_cb(self, outdata, frames, time_info, status):
-        out = np.zeros(frames, dtype=np.float32); offset = 0
+        # Keep partially consumed audio at the front; re-queueing it at the
+        # tail can reorder chunks when the device block size differs.
+        out = np.zeros(frames, dtype=np.float32)
+        offset = 0
         while offset < frames:
-            try: chunk = self.audio_queue.get_nowait()
-            except queue.Empty: break
-            take = min(len(chunk), frames-offset)
-            out[offset:offset+take] = chunk[:take]; offset += take
-            if take < len(chunk):
-                try: self.audio_queue.put_nowait(chunk[take:])
-                except queue.Full: pass
+            if self.pending_offset >= len(self.pending_chunk):
+                try:
+                    self.pending_chunk = self.audio_queue.get_nowait()
+                    self.pending_offset = 0
+                except queue.Empty:
+                    break
+            available = len(self.pending_chunk) - self.pending_offset
+            take = min(available, frames - offset)
+            out[offset:offset + take] = self.pending_chunk[self.pending_offset:self.pending_offset + take]
+            offset += take
+            self.pending_offset += take
         outdata[:, 0] = out
 
     def process(self, x):
@@ -135,9 +144,25 @@ class Engine:
             x = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32)/32768
         if ch > 1: x = x.reshape(-1, ch).mean(axis=1)
         if rate != self.output_rate:
-            x = np.interp(np.arange(int(len(x)*self.output_rate/rate))*rate/self.output_rate,
+            target_len = max(1, int(round(len(x) * self.output_rate / rate)))
+            x = np.interp(np.linspace(0, max(0, len(x) - 1), target_len),
                           np.arange(len(x)), x).astype(np.float32)
-        sd.play(x, self.output_rate, device=self.output)
+        # Reuse the active output stream: sd.play() opens a second stream on
+        # the same device and can fail while live monitoring is running.
+        chunk_size = 2048
+        for start in range(0, len(x), chunk_size):
+            chunk = x[start:start + chunk_size].copy()
+            try:
+                self.audio_queue.put_nowait(chunk)
+            except queue.Full:
+                try:
+                    self.audio_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self.audio_queue.put_nowait(chunk)
+                except queue.Full:
+                    pass
 
 class Window(QMainWindow):
     def __init__(self):
