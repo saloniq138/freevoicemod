@@ -174,17 +174,18 @@ class Engine:
         elif self.effect == "Male":
             x = np.tanh(x*2.8)*.85 + prev*.15
         elif self.effect == "Villager":
-            # Villager-like nasal, low-mid "hrrm" timbre. This is a live filter,
-            # not a recording or an AI voice clone.
-            voiced = np.tanh(x * 2.8)
-            f1 = self._formant_resonator(voiced, 520, 170, "villager_f1")
-            f2 = self._formant_resonator(voiced, 1120, 240, "villager_f2")
-            f3 = self._formant_resonator(voiced, 1850, 320, "villager_f3")
-            low = voiced + np.concatenate(([voiced[0]], voiced[:-1])) * 0.32
-            grunt = 0.38 * f1 + 0.28 * f2 + 0.12 * f3
-            wobble = 0.88 + 0.12 * np.sin(2 * np.pi * 3.2 * t)
-            x = (low * 0.48 + grunt * 5.5) * wobble
-            x = np.tanh(x * 1.6)
+            # Live Villager-inspired voice filter; no prerecorded clips mixed in.
+            # Keep speech intelligible while emphasizing nasal "hrrm" formants.
+            voiced = np.tanh(x * 2.2)
+            f1 = self._formant_resonator(voiced, 480, 190, "villager_f1")
+            f2 = self._formant_resonator(voiced, 980, 260, "villager_f2")
+            f3 = self._formant_resonator(voiced, 1680, 380, "villager_f3")
+            previous = np.concatenate(([voiced[0]], voiced[:-1]))
+            body = 0.72 * voiced + 0.28 * previous
+            nasal = 0.48 * f1 + 0.42 * f2 + 0.18 * f3
+            wobble = 0.94 + 0.06 * np.sin(2 * np.pi * 2.7 * t)
+            x = (0.72 * body + 1.35 * nasal) * wobble
+            x = np.tanh(x * 1.35)
         elif self.effect == "Chicken":
             squeak = np.sin(2*np.pi*(340+70*np.sin(2*np.pi*6*t))*t)
             x = np.tanh(x*2.4)*.65 + .3*squeak*np.abs(x)
