@@ -17,12 +17,43 @@ EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female/Male pitch", "Vil
 class Engine:
     def __init__(self):
         self.stream=None; self.effect="Clean"; self.mix=.7; self.denoise=False
-        self.echo=np.zeros(48000,dtype=np.float32); self.pos=0; self.phase=0; self.voice_phase=0.0
+        self.echo=np.zeros(48000,dtype=np.float32); self.pos=0; self.phase=0; self.voice_phase=0.0; self.sample_rate=48000
         self.output=None
     def start(self, inp, out):
-        self.stop(); self.echo[:]=0; self.pos=0; self.output=out
-        self.stream=sd.Stream(device=(inp,out),samplerate=48000,blocksize=480,channels=(1,1),dtype="float32",callback=self.cb,latency="low")
-        self.stream.start()
+        self.stop()
+        devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
+        in_dev, out_dev = devices[int(inp)], devices[int(out)]
+        in_api, out_api = int(in_dev["hostapi"]), int(out_dev["hostapi"])
+        if in_api != out_api:
+            raise RuntimeError(
+                "Mikrofon i wyjście używają różnych systemów audio: "
+                f"{hostapis[in_api]['name']} oraz {hostapis[out_api]['name']}.\\n\\n"
+                "Wybierz urządzenia z tym samym dopiskiem API, np. oba WASAPI albo oba MME."
+            )
+        self.echo[:] = 0
+        self.pos = 0
+        self.output = int(out)
+        rates = [48000, 44100, int(round(in_dev["default_samplerate"])),
+                 int(round(out_dev["default_samplerate"]))]
+        rates = list(dict.fromkeys(r for r in rates if r > 0))
+        errors = []
+        for rate in rates:
+            try:
+                self.sample_rate = rate
+                self.stream = sd.Stream(
+                    device=(int(inp), int(out)), samplerate=rate, blocksize=0,
+                    channels=(1, 1), dtype="float32", callback=self.cb, latency="high"
+                )
+                self.stream.start()
+                return
+            except Exception as exc:
+                errors.append(f"{rate} Hz: {exc}")
+                if self.stream:
+                    try: self.stream.close()
+                    except Exception: pass
+                    self.stream = None
+        raise RuntimeError("Nie udało się uruchomić audio. Próby:\\n" + "\\n".join(errors))
     def stop(self):
         if self.stream:
             try: self.stream.stop(); self.stream.close()
@@ -31,7 +62,7 @@ class Engine:
     def cb(self, indata,outdata,frames,time_info,status):
         x=indata[:,0].copy()
         if self.denoise and np.sqrt(np.mean(x*x)+1e-12)<.012: x*=.15
-        t=(np.arange(frames,dtype=np.float32)+self.phase)/48000.0
+        t=(np.arange(frames,dtype=np.float32)+self.phase)/self.sample_rate
         if self.effect=="Robot":
             x=np.tanh(x*2.2)*np.sin(2*np.pi*65*t)
         elif self.effect=="Demon":
@@ -63,7 +94,7 @@ class Engine:
             growl=np.sin(2*np.pi*58*t)
             x=np.tanh(x*4.8)*.82 + .25*growl*np.abs(x)
             x=.8*x+.2*np.concatenate(([x[0]],x[:-1]))
-        self.phase=(self.phase+frames)%48000
+        self.phase=(self.phase+frames)%self.sample_rate
         outdata[:,0]=np.clip(x*self.mix,-.98,.98)
     def play_wav(self,path):
         with wave.open(str(path),"rb") as w:
@@ -71,9 +102,10 @@ class Engine:
             if width!=2: raise ValueError("Soundboard wymaga WAV PCM 16-bit.")
             x=np.frombuffer(w.readframes(n),dtype=np.int16).astype(np.float32)/32768
         if ch>1: x=x.reshape(-1,ch).mean(axis=1)
-        if rate!=48000:
-            x=np.interp(np.arange(int(len(x)*48000/rate))/48000,np.arange(len(x))/rate,x).astype(np.float32)
-        sd.play(x,48000,device=self.output)
+        target_rate = getattr(self, "sample_rate", 48000)
+        if rate != target_rate:
+            x=np.interp(np.arange(int(len(x)*target_rate/rate))/target_rate,np.arange(len(x))/rate,x).astype(np.float32)
+        sd.play(x,target_rate,device=self.output)
 
 class Window(QMainWindow):
     def __init__(self):
@@ -95,12 +127,15 @@ class Window(QMainWindow):
         self.status=QLabel("● ZATRZYMANY"); top.addWidget(self.status); main.addLayout(top)
         dev=QGroupBox("Urządzenia audio"); dg=QGridLayout(dev)
         self.inputs=QComboBox(); self.outputs=QComboBox()
+        hostapis = sd.query_hostapis()
         for i,d in enumerate(sd.query_devices()):
-            if d["max_input_channels"]: self.inputs.addItem(f"{i}: {d['name']}",i)
-            if d["max_output_channels"]: self.outputs.addItem(f"{i}: {d['name']}",i)
+            api = hostapis[int(d["hostapi"])]["name"]
+            label = f"{i}: {d['name']} [{api}]"
+            if d["max_input_channels"]: self.inputs.addItem(label,i)
+            if d["max_output_channels"]: self.outputs.addItem(label,i)
         dg.addWidget(QLabel("Mikrofon"),0,0); dg.addWidget(self.inputs,0,1)
         dg.addWidget(QLabel("Wyjście / wirtualny kabel"),1,0); dg.addWidget(self.outputs,1,1)
-        hint=QLabel("Discord/OBS: wybierz CABLE Input jako wyjście tutaj, a CABLE Output jako mikrofon w aplikacji docelowej.")
+        hint=QLabel("Mikrofon i wyjście muszą mieć ten sam dopisek API (np. oba WASAPI albo oba MME). Dla Discord/OBS wybierz wirtualny kabel jako wyjście, a drugi koniec jako mikrofon w aplikacji docelowej.")
         hint.setWordWrap(True); hint.setStyleSheet("color:#b7abc9;font-size:12px"); dg.addWidget(hint,2,0,1,2)
         btns=QHBoxLayout(); self.start=QPushButton("▶ Uruchom mikrofon"); self.stop=QPushButton("■ Zatrzymaj")
         self.stop.setEnabled(False); self.start.clicked.connect(self.start_audio); self.stop.clicked.connect(self.stop_audio)
