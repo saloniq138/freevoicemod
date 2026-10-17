@@ -1,7 +1,8 @@
-import sys, json, os, wave, queue
+import sys, json, os, wave, queue, zipfile
 from pathlib import Path
 import numpy as np
 import sounddevice as sd
+import miniaudio
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
@@ -12,6 +13,29 @@ APP = Path(os.getenv("APPDATA", str(Path.home()))) / "VoiceForge"
 APP.mkdir(parents=True, exist_ok=True)
 SOUNDS = APP / "sounds"; SOUNDS.mkdir(exist_ok=True)
 PRESETS = APP / "presets.json"
+SOUND_EXTENSIONS = {".wav", ".ogg", ".mp3"}
+
+def extract_sound_archives():
+    """Import supported audio files from ZIPs placed in the sounds folder."""
+    for archive in SOUNDS.glob("*.zip"):
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    # Use only the filename, preventing ZIP path traversal.
+                    name = Path(info.filename).name
+                    if not name or Path(name).suffix.lower() not in SOUND_EXTENSIONS:
+                        continue
+                    target = SOUNDS / name
+                    if target.exists():
+                        continue
+                    with zf.open(info) as source, target.open("wb") as dest:
+                        dest.write(source.read())
+        except (OSError, zipfile.BadZipFile) as exc:
+            print(f"Nie udało się rozpakować {archive.name}: {exc}")
+
+extract_sound_archives()
 EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female", "Male", "Villager", "Chicken", "Zombie", "Skeleton", "Creeper", "Enderman", "Ghast", "Witch", "Spider", "Pig", "Cow", "Sheep", "Ender Dragon", "Ghost", "Alien", "Helium", "Deep", "Megaphone", "Chipmunk"]
 
 class Engine:
@@ -20,8 +44,9 @@ class Engine:
         self.effect = "Clean"; self.mix = .8; self.denoise = False
         self.echo = np.zeros(96000, dtype=np.float32); self.pos = 0
         self.phase = 0; self.input_rate = 48000; self.output_rate = 48000
-        self.audio_queue = queue.Queue(maxsize=80); self.output = None
+        self.audio_queue = queue.Queue(maxsize=80); self.sound_queue = queue.Queue(maxsize=100); self.output = None
         self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
+        self.pending_sound_chunk = np.zeros(0, dtype=np.float32); self.pending_sound_offset = 0
         self.formant_state = {}
 
     def start(self, inp, out):
@@ -32,10 +57,12 @@ class Engine:
         self.output_rate = int(round(odev["default_samplerate"])) or 48000
         self.output = int(out); self.echo[:] = 0; self.pos = 0; self.phase = 0
         self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
+        self.pending_sound_chunk = np.zeros(0, dtype=np.float32); self.pending_sound_offset = 0
         self.formant_state.clear()
-        while not self.audio_queue.empty():
-            try: self.audio_queue.get_nowait()
-            except queue.Empty: break
+        for q in (self.audio_queue, self.sound_queue):
+            while not q.empty():
+                try: q.get_nowait()
+                except queue.Empty: break
         # Separate streams allow the microphone and speakers to use different Windows audio APIs.
         try:
             self.out_stream = sd.OutputStream(device=int(out), samplerate=self.output_rate,
@@ -89,7 +116,22 @@ class Engine:
             out[offset:offset + take] = self.pending_chunk[self.pending_offset:self.pending_offset + take]
             offset += take
             self.pending_offset += take
-        outdata[:, 0] = out
+        # Mix soundboard clips over the live microphone signal.
+        offset = 0
+        while offset < frames:
+            if self.pending_sound_offset >= len(self.pending_sound_chunk):
+                try:
+                    self.pending_sound_chunk = self.sound_queue.get_nowait()
+                    self.pending_sound_offset = 0
+                except queue.Empty:
+                    break
+            available = len(self.pending_sound_chunk) - self.pending_sound_offset
+            take = min(available, frames - offset)
+            out[offset:offset + take] += self.pending_sound_chunk[
+                self.pending_sound_offset:self.pending_sound_offset + take]
+            offset += take
+            self.pending_sound_offset += take
+        outdata[:, 0] = np.clip(out, -0.98, 0.98)
 
     def _formant_resonator(self, samples, frequency, bandwidth, key):
         """Small stateful resonator to add vowel-like formants without extra packages."""
@@ -188,32 +230,39 @@ class Engine:
         self.phase = (self.phase + len(x)) % max(self.input_rate, 1)
         return np.clip(x*self.mix, -.98, .98).astype(np.float32)
 
-    def play_wav(self, path):
-        with wave.open(str(path), "rb") as w:
-            ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-            if width != 2: raise ValueError("Soundboard wymaga WAV PCM 16-bit.")
-            x = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32)/32768
-        if ch > 1: x = x.reshape(-1, ch).mean(axis=1)
-        if rate != self.output_rate:
-            target_len = max(1, int(round(len(x) * self.output_rate / rate)))
-            x = np.interp(np.linspace(0, max(0, len(x) - 1), target_len),
-                          np.arange(len(x)), x).astype(np.float32)
-        # Reuse the active output stream: sd.play() opens a second stream on
-        # the same device and can fail while live monitoring is running.
-        chunk_size = 2048
-        for start in range(0, len(x), chunk_size):
-            chunk = x[start:start + chunk_size].copy()
-            try:
-                self.audio_queue.put_nowait(chunk)
-            except queue.Full:
+    def play_file(self, path, output_device=None):
+        """Decode WAV/OGG/MP3 to float audio and play via the selected output."""
+        device = output_device if output_device is not None else self.output
+        if device is not None and self.out_stream is not None:
+            rate = self.output_rate
+        elif device is not None:
+            rate = int(round(sd.query_devices(int(device))["default_samplerate"])) or 48000
+        else:
+            rate = 48000
+        decoded = miniaudio.decode_file(
+            str(path),
+            output_format=miniaudio.SampleFormat.FLOAT32,
+            nchannels=1,
+            sample_rate=rate,
+        )
+        samples = np.frombuffer(decoded.samples, dtype=np.float32).copy()
+        if not len(samples):
+            return
+        if self.out_stream is not None and self.out_stream.active:
+            # Separate queue lets effects play over the live mic without
+            # interrupting or reordering microphone audio.
+            chunk_size = 2048
+            for offset in range(0, len(samples), chunk_size):
+                chunk = samples[offset:offset + chunk_size].copy()
                 try:
-                    self.audio_queue.get_nowait()
-                except queue.Empty:
-                    pass
-                try:
-                    self.audio_queue.put_nowait(chunk)
+                    self.sound_queue.put_nowait(chunk)
                 except queue.Full:
-                    pass
+                    try: self.sound_queue.get_nowait()
+                    except queue.Empty: pass
+                    try: self.sound_queue.put_nowait(chunk)
+                    except queue.Full: pass
+        else:
+            sd.play(samples, samplerate=rate, device=int(device) if device is not None else None, blocking=False)
 
 class Window(QMainWindow):
     def __init__(self):
@@ -289,7 +338,9 @@ class Window(QMainWindow):
         for label, fn in [("Save",self.save_preset),("Load",self.load_preset),("Delete",self.delete_preset)]:
             b = QPushButton(label); b.clicked.connect(fn); pbtn.addWidget(b)
         pl.addLayout(pbtn); right.addWidget(pg)
-        sg = QGroupBox("SOUNDBOARD · WAV"); sl = QVBoxLayout(sg); self.sounds = QListWidget(); sl.addWidget(self.sounds)
+        sg = QGroupBox("SOUNDBOARD · WAV / OGG / MP3"); sl = QVBoxLayout(sg); self.sounds = QListWidget(); sl.addWidget(self.sounds)
+        sound_hint = QLabel("ZIP-y rozpakowują się automatycznie. Obsługiwane: WAV, OGG i MP3.")
+        sound_hint.setWordWrap(True); sound_hint.setStyleSheet("color:#aaa0bd;font-size:12px"); sl.addWidget(sound_hint)
         sbtn = QHBoxLayout()
         for label, fn in [("Add WAV",self.add_sound),("Play",self.play_sound),("Remove",self.remove_sound)]:
             b = QPushButton(label); b.clicked.connect(fn); sbtn.addWidget(b)
@@ -333,7 +384,11 @@ class Window(QMainWindow):
             d = json.loads(PRESETS.read_text(encoding="utf-8")) if PRESETS.exists() else {}
             self.presets.addItems(d.keys())
         except Exception: pass
-        self.sounds.clear(); self.sounds.addItems([p.name for p in sorted(SOUNDS.glob("*.wav"))])
+        extract_sound_archives()
+        self.sounds.clear()
+        sound_files = [p.name for p in SOUNDS.iterdir()
+                       if p.is_file() and p.suffix.lower() in SOUND_EXTENSIONS]
+        self.sounds.addItems(sorted(sound_files, key=str.casefold))
 
     def save_preset(self):
         name, ok = QInputDialog.getText(self,"Save preset","Name:")
@@ -357,16 +412,22 @@ class Window(QMainWindow):
         PRESETS.write_text(json.dumps(d,indent=2),encoding="utf-8"); self.refresh()
 
     def add_sound(self):
-        p,_ = QFileDialog.getOpenFileName(self,"Add WAV","","WAV (*.wav)")
+        p, _ = QFileDialog.getOpenFileName(
+            self, "Dodaj dźwięk", "",
+            "Pliki audio (*.wav *.ogg *.mp3);;Wszystkie pliki (*)"
+        )
         if p:
             import shutil
-            shutil.copy2(p,SOUNDS/Path(p).name); self.refresh()
+            shutil.copy2(p, SOUNDS / Path(p).name)
+            self.refresh()
 
     def play_sound(self):
         item = self.sounds.currentItem()
         if item:
-            try: self.engine.play_wav(SOUNDS/item.text())
-            except Exception as e: QMessageBox.critical(self,"Soundboard",str(e))
+            try:
+                self.engine.play_file(SOUNDS / item.text(), self.outputs.currentData())
+            except Exception as e:
+                QMessageBox.critical(self, "Soundboard", f"Nie udało się odtworzyć dźwięku:\n{e}")
 
     def remove_sound(self):
         item = self.sounds.currentItem()
