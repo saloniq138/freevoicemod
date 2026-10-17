@@ -11,7 +11,7 @@ Darmowy prototyp zmieniacza głosu na żywo dla Windows, z ciemnym interfejsem i
 - Panel efektów ma wyszukiwarkę i przewijanie, więc długa lista nie rozciąga całego okna.
 - Wybrany efekt jest widoczny w panelu **SELECTED VOICE**. Lista jest oparta na efektach DSP, nie na instalowanych głosach TTS.
 
-Wszystkie efekty mobów są generowanymi filtrami DSP inspirowanymi brzmieniem Minecrafta, a nie oryginalnymi próbkami ani dokładną emulacją dźwięków gry. Realistyczna konwersja głosu AI nie jest jeszcze zaimplementowana.
+Wszystkie efekty mobów są generowanymi filtrami DSP inspirowanymi brzmieniem Minecrafta, a nie oryginalnymi próbkami ani dokładną emulacją dźwięków gry. Efekt Villager został poprawiony o kilka rezonatorów formantowych, aby uzyskać bardziej nosowe, gardłowe „hrrm”. To nadal filtr czasu rzeczywistego, nie klon AI ani gwarantowana kopia oryginalnego głosu.
 
 ## Inne funkcje
 - Przekazywanie audio z mikrofonu do wyjścia audio.
