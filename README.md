@@ -2,35 +2,40 @@
 
 Darmowy prototyp zmieniacza głosu na żywo dla Windows, z ciemnym interfejsem i fioletowymi akcentami.
 
-## Funkcje
+## Efekty głosu
+- Clean, Robot, Demon, Radio, Echo.
+- Female/Male pitch: lekka zmiana barwy, nie pełna zmiana wysokości głosu.
+- Villager: nosowa, bucząca modulacja inspirowana wieśniakiem z Minecrafta.
+- Chicken: wysoka, piskliwa modulacja inspirowana kurczakiem.
+- Zombie: niska, chropowata modulacja inspirowana zombie.
+
+Efekty Villager/Chicken/Zombie są generowanymi efektami DSP, a nie oryginalnymi próbkami dźwiękowymi z Minecrafta. Realistyczna konwersja głosu AI nie jest jeszcze zaimplementowana.
+
+## Inne funkcje
 - Przekazywanie audio z mikrofonu do wyjścia audio.
-- Efekty Clean, Robot, Demon, Radio i Echo.
 - Lekka bramka szumów.
 - Soundboard dla plików WAV PCM 16-bit.
 - Zapisywanie presetów.
-- Skróty klawiszowe aktywne, gdy okno aplikacji ma fokus.
+- Skróty Ctrl+1 do Ctrl+9 wybierają efekty; Ctrl+Shift+V uruchamia/zatrzymuje audio, gdy okno aplikacji ma fokus.
 
-## Ograniczenia
-- Efekt „Female/Male pitch” jest prostym efektem tonalnym, nie realistyczną konwersją płci głosu.
-- Konwersja AI nie jest jeszcze zaimplementowana.
-- Aby przesłać dźwięk do Discorda/OBS jako mikrofon, użyj zaufanego wirtualnego kabla audio, np. VB-CABLE.
-- Aplikacja przetwarza audio lokalnie; nie wymaga API key.
+## Discord / OBS
+Zainstaluj zaufany wirtualny kabel audio, np. VB-CABLE. W VoiceForge ustaw wyjście na `CABLE Input`, a w Discordzie/OBS wybierz `CABLE Output` jako mikrofon. Efekt usłyszysz dopiero po uruchomieniu strumienia audio.
 
 ## Uruchomienie
 Wymagany Windows 10/11 i Python 3.12 64-bit.
 
 ```powershell
 py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python main.py
 ```
 
 ## Kompilacja EXE
-Uruchom `build_windows.bat`. Plik będzie w `dist\VoiceForge\VoiceForge.exe`. Zachowaj cały folder `dist\VoiceForge`.
+Uruchom `build_windows.bat`. Plik będzie w `dist\\VoiceForge\\VoiceForge.exe`. Zachowaj cały folder `dist\\VoiceForge`.
 
-Alternatywnie GitHub Actions buduje aplikację na Windows i publikuje artefakt `VoiceForge-Windows`.
+GitHub Actions automatycznie buduje aplikację na Windows po zmianach na `main` i publikuje artefakt `VoiceForge-Windows` w przebiegu workflow.
 
 ## Status
-Kod źródłowy i konfiguracja kompilacji są prototypem. Przed użyciem należy przetestować audio na konkretnym urządzeniu. Nie oznaczamy builda jako gotowego, dopóki nie przejdzie testu.
+To prototyp. Efekty są aproksymacjami DSP i wymagają testów na konkretnym sprzęcie. Nie deklarujemy gotowości pliku EXE, dopóki build nie zakończy się pomyślnie.
