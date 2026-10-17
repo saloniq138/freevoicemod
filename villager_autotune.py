@@ -120,10 +120,8 @@ def install_villager_autotune(engine_class, sounds_dir):
         effect = self.effect
         result = original_process(self, samples)
         if effect == "Villager":
-            # Reload if the user has added/replaced Villager clips while the
-            # app is open; the directory scan is cheap and decoding only occurs
-            # when the file list changes.
-            self.villager_overlay.load_samples(self.input_rate)
+            # Samples are preloaded when audio starts; do not scan the disk
+            # from the real-time audio callback.
             result = self.villager_overlay.mix(result, self.input_rate, raw_voice)
         return result
 
