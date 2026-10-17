@@ -22,7 +22,7 @@ jobs:
       - name: Run hardware-independent DSP tests
         run: python -m unittest discover -s tests -v
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 --collect-all miniaudio main.py
+        run: pyinstaller --noconfirm --clean --windowed --name VoiceForge --collect-all sounddevice --collect-all PySide6 --collect-all miniaudio --add-data "Villager_hurt1.ogg.zip;." main.py
       - name: Package app
         shell: pwsh
         run: Compress-Archive -Path dist/VoiceForge -DestinationPath VoiceForge-Windows.zip -Force
