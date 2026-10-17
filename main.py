@@ -16,6 +16,18 @@ SOUNDS = APP / "sounds"; SOUNDS.mkdir(exist_ok=True)
 PRESETS = APP / "presets.json"
 SOUND_EXTENSIONS = {".wav", ".ogg", ".mp3"}
 
+# Bundle the Villager sample archive with the Windows build and import it on
+# first launch, so the live Villager filter works without manual file copying.
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+try:
+    import shutil
+    for bundled_archive in RESOURCE_DIR.glob("Villager*.zip"):
+        target_archive = SOUNDS / bundled_archive.name
+        if not target_archive.exists():
+            shutil.copy2(bundled_archive, target_archive)
+except OSError as exc:
+    print(f"Nie udało się skopiować paczki dźwięków villagera: {exc}")
+
 def extract_sound_archives():
     """Import supported audio files from ZIPs placed in the sounds folder."""
     for archive in SOUNDS.glob("*.zip"):
