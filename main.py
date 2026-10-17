@@ -41,6 +41,7 @@ EFFECTS = ["Clean", "Robot", "Demon", "Radio", "Echo", "Female", "Male", "Villag
 class Engine:
     def __init__(self):
         self.stream = None
+        self.in_stream = None; self.out_stream = None
         self.effect = "Clean"; self.mix = .8; self.denoise = False
         self.echo = np.zeros(96000, dtype=np.float32); self.pos = 0
         self.phase = 0; self.input_rate = 48000; self.output_rate = 48000
