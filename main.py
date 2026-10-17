@@ -22,6 +22,7 @@ class Engine:
         self.phase = 0; self.input_rate = 48000; self.output_rate = 48000
         self.audio_queue = queue.Queue(maxsize=80); self.output = None
         self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
+        self.formant_state = {}
 
     def start(self, inp, out):
         self.stop()
@@ -31,6 +32,7 @@ class Engine:
         self.output_rate = int(round(odev["default_samplerate"])) or 48000
         self.output = int(out); self.echo[:] = 0; self.pos = 0; self.phase = 0
         self.pending_chunk = np.zeros(0, dtype=np.float32); self.pending_offset = 0
+        self.formant_state.clear()
         while not self.audio_queue.empty():
             try: self.audio_queue.get_nowait()
             except queue.Empty: break
@@ -89,6 +91,21 @@ class Engine:
             self.pending_offset += take
         outdata[:, 0] = out
 
+    def _formant_resonator(self, samples, frequency, bandwidth, key):
+        """Small stateful resonator to add vowel-like formants without extra packages."""
+        fs = max(float(self.input_rate), 8000.0)
+        radius = float(np.exp(-np.pi * bandwidth / fs))
+        coeff = 2.0 * radius * float(np.cos(2.0 * np.pi * frequency / fs))
+        gain = 1.0 - radius
+        y1, y2 = self.formant_state.get(key, (0.0, 0.0))
+        out = np.empty_like(samples)
+        for i, sample in enumerate(samples):
+            y = gain * float(sample) + coeff * y1 - radius * radius * y2
+            out[i] = y
+            y2, y1 = y1, y
+        self.formant_state[key] = (y1, y2)
+        return out
+
     def process(self, x):
         if not len(x): return x
         if self.denoise and np.sqrt(np.mean(x*x)+1e-12) < .012: x *= .15
@@ -114,7 +131,17 @@ class Engine:
         elif self.effect == "Male":
             x = np.tanh(x*2.8)*.85 + prev*.15
         elif self.effect == "Villager":
-            x = np.tanh(x*3.4)*(.75+.25*np.sin(2*np.pi*5*t)) + .18*np.sin(2*np.pi*150*t)*np.abs(x)
+            # Villager-like nasal, low-mid "hrrm" timbre. This is a live filter,
+            # not a recording or an AI voice clone.
+            voiced = np.tanh(x * 2.8)
+            f1 = self._formant_resonator(voiced, 520, 170, "villager_f1")
+            f2 = self._formant_resonator(voiced, 1120, 240, "villager_f2")
+            f3 = self._formant_resonator(voiced, 1850, 320, "villager_f3")
+            low = voiced + np.concatenate(([voiced[0]], voiced[:-1])) * 0.32
+            grunt = 0.38 * f1 + 0.28 * f2 + 0.12 * f3
+            wobble = 0.88 + 0.12 * np.sin(2 * np.pi * 3.2 * t)
+            x = (low * 0.48 + grunt * 5.5) * wobble
+            x = np.tanh(x * 1.6)
         elif self.effect == "Chicken":
             squeak = np.sin(2*np.pi*(340+70*np.sin(2*np.pi*6*t))*t)
             x = np.tanh(x*2.4)*.65 + .3*squeak*np.abs(x)
